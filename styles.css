@@ -1,0 +1,106 @@
+// Initialize the map and set its view to a default location
+var map = L.map('map').setView([31.37, -97.95], 15);
+
+// Add a tile layer (OpenStreetMap) as the base layer
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap contributors'
+}).addTo(map);
+
+// Initialize the sidebar
+var sidebar = L.control.sidebar('sidebar', {
+    position: 'left'
+});
+map.addControl(sidebar);
+
+// Show the sidebar by default
+sidebar.show();
+
+// Define data products (this can be dynamic)
+var dataProducts = [ {
+    name: "Contours", id: "contours"
+}
+
+,
+{
+    name: "Parcels", id: "parcels"
+}
+
+,
+{
+    name: "Point Cloud", id: "point_cloud"
+}
+
+];
+
+// Render data products in the sidebar
+var dataProductsDiv = document.getElementById('data-products');
+dataProducts.forEach(product => {
+    var item = document.createElement('div');
+    item.className = 'data-item';
+    item.innerText = product.name;
+    item.id = product.id;
+    item.onclick = () => {
+        alert(`You clicked on ${product.name}`);
+    };
+    dataProductsDiv.appendChild(item);
+});
+
+// Add drawing tools to the map
+var drawnItems = new L.FeatureGroup();
+map.addLayer(drawnItems);
+
+var drawControl = new L.Control.Draw({
+    edit: {
+        featureGroup: drawnItems
+    }
+});
+map.addControl(drawControl);
+
+// Handle the creation of shapes on the map and save to local directory
+map.on(L.Draw.Event.CREATED, function (event) {
+    var layer = event.layer;
+    drawnItems.addLayer(layer);
+
+    // Generate a unique filename for the polygon
+    var filename = `polygon_${Date.now()}_${Math.random().toString(36).substring(7)}.geojson`;
+
+    // Convert layer to GeoJSON
+    var geojsonData = layer.toGeoJSON();
+
+    // Save the GeoJSON to the specified local directory
+    savePolygonToServer(geojsonData, filename);
+    alert('Polygon saved: ' + filename);
+});
+
+// Function to save GeoJSON data to the local directory
+function savePolygonToServer(geojsonData, filename) {
+    fetch('http://localhost:5000/save_polygon', { // Replace with your Flask server URL
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            data: geojsonData,
+            filename: filename
+        }),
+    }) .then(response => response.json()) .then(data => {
+        console.log('Polygon saved successfully:', data);
+    }) .catch((error) => {
+        console.error('Error saving polygon:', error);
+    });
+}
+
+// Toggle the visibility of sidebar panes
+function togglePane(paneId) {
+    var pane = document.getElementById(paneId);
+    if (pane.classList.contains('collapsed'))
+
+{
+    pane .classList.remove('collapsed');
+}
+
+else {
+    pane .classList.add('collapsed');
+}
+}

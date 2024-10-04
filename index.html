@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Earthbenders Platform - Draw Polygon and Clip SRTM Data</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.css" />
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+        #map {
+            height: 600px;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        #srtm-button {
+            margin-top: 10px;
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50; /* Green */
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+
+        #srtm-button:hover {
+            background-color: #45a049;
+        }
+
+        #log {
+            margin-top: 20px;
+            height: 200px;
+            width: 100%;
+            border: 1px solid #ccc;
+            overflow-y: auto;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <h3>Earthbenders Platform - Draw a Polygon and Download SRTM Data</h3>
+    <div id="map"></div>
+    <button id="srtm-button" style="display:none;">Download and Clip SRTM Data</button>
+
+    <!-- Log Section -->
+    <div id="log">Log Messages:</div>
+
+    <!-- Leaflet JS and Plugins -->
+    <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leaflet-draw@1.0.4/dist/leaflet.draw.js"></script>
+
+    <script>
+        var map = L.map('map').setView([37.7749, -122.4194], 10);
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        var drawnItems = new L.FeatureGroup();
+        map.addLayer(drawnItems);
+
+        var drawControl = new L.Control.Draw({
+            edit: {
+                featureGroup: drawnItems,
+                edit: true,
+                remove: true
+            },
+            draw: {
+                polygon: true,
+                rectangle: false,
+                circle: false,
+                marker: false,
+                circlemarker: false
+            }
+        });
+        map.addControl(drawControl);
+
+        let drawnPolygon = null;
+
+        map.on(L.Draw.Event.CREATED, function (event) {
+            var layer = event.layer;
+            drawnItems.addLayer(layer);
+            drawnPolygon = layer;
+            document.getElementById('srtm-button').style.display = 'block';
+        });
+
+        document.getElementById('srtm-button').addEventListener('click', function () {
+            if (drawnPolygon) {
+                var geojsonData = drawnPolygon.toGeoJSON();
+                var bounds = drawnPolygon.getBounds();
+                var latLngBounds = [
+                    [bounds.getSouthWest().lat, bounds.getSouthWest().lng],
+                    [bounds.getNorthEast().lat, bounds.getNorthEast().lng]
+                ];
+
+                updateLog('Sending request to server for SRTM clipping...');
+                fetch('http://127.0.0.1:8000/clip_srtm', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        polygon: geojsonData,
+                        bbox: latLngBounds
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    updateLog('Clipping completed: ' + data.message);
+                    if (data.output_file) {
+                        displaySRTMOnMap(data.output_file);
+                    }
+                })
+                .catch(error => {
+                    updateLog('Error during clipping: ' + error);
+                });
+            } else {
+                alert('Please draw a polygon first!');
+            }
+        });
+
+        function updateLog(message) {
+            var logElement = document.getElementById('log');
+            var newMessage = document.createElement('div');
+            newMessage.textContent = message;
+            logElement.appendChild(newMessage);
+            logElement.scrollTop = logElement.scrollHeight;
+        }
+
+        function displaySRTMOnMap(filename) {
+            var srtmUrl = 'http://127.0.0.1:8000/serve_srtm/' + filename;
+            updateLog('Displaying SRTM raster on the map...');
+
+            var srtmLayer = L.imageOverlay(srtmUrl, drawnPolygon.getBounds(), {
+                opacity: 0.7
+            }).addTo(map);
+
+            map.fitBounds(drawnPolygon.getBounds());
+            updateLog('SRTM raster displayed successfully.');
+        }
+    </script>
+</body>
+</html>
